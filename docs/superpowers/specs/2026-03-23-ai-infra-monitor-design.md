@@ -71,6 +71,8 @@ Runs on cron (configurable, default 6am daily). Each source is an independent n8
 
 All signals written to PostgreSQL `raw_signals` table.
 
+**Deduplication:** Between collection and triage, n8n runs a dedup node that checks `url` uniqueness and `content_hash` (SHA-256 of normalized title + source). Duplicate signals are linked to the original via `duplicate_of` field rather than discarded, preserving the multi-source signal as a relevance indicator.
+
 #### Phase 2: Triage & Investigation (n8n + Dify, hybrid)
 
 **Step 2a — LLM Triage (n8n node, fast/cheap model e.g. Haiku):**
@@ -96,7 +98,7 @@ Triggered via API for high-signal items. Agent workflow:
 
 1. **Context gather** — Pull related signals from DB (same company, same category, recent)
 2. **Cross-reference** — Check against tracked company list, known funding history, recent activity
-3. **Investigate** — Follow links, search for additional context, check related sources
+3. **Investigate** — Follow links, search for additional context, check related sources (agent tools: web search, URL fetch, GitHub API, database query)
 4. **Synthesize** — Produce structured analysis with confidence level
 5. **Flag for human** — If uncertain, high-stakes, or contradictory signals → queue for human review
 
@@ -133,7 +135,11 @@ raw_signals (
   entities JSONB,
   metadata JSONB,
   collected_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  content_hash VARCHAR,
+  duplicate_of UUID REFERENCES raw_signals(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(url),
+  UNIQUE(content_hash)
 )
 
 -- Triage results
