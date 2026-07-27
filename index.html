@@ -288,6 +288,7 @@
     <div class="modal-body" id="modal-body"></div>
 </div>
 
+<script src="lib/transforms.js"></script>
 <script>
 // ===== GLOBALS =====
 let EVENTS = [];
@@ -370,24 +371,15 @@ function switchView(view) {
 }
 
 // ===== TIMELINE VIEW =====
-function getDataDate() {
-    // Use the latest event date as reference, not real current date
-    const dates = EVENTS.map(e => new Date(e.published + 'T00:00:00'));
-    return new Date(Math.max(...dates));
-}
-
 function getTimelineEvents() {
     const days = document.getElementById('tl-filter-date').value;
     const type = document.getElementById('tl-filter-type').value;
-    const now = getDataDate();
-    return EVENTS.filter(e => {
-        if (days !== 'all') {
-            const d = new Date(e.published);
-            if ((now - d) / 86400000 > parseInt(days)) return false;
-        }
-        if (type !== 'all' && e.event_type !== type) return false;
-        return true;
-    });
+    return Transforms.filterEvents(EVENTS, {
+        days,
+        company: 'all',
+        type,
+        segment: 'all'
+    }, Transforms.getDataDate(EVENTS));
 }
 
 function renderTimeline() {
@@ -475,18 +467,12 @@ function applyFilters() {
     const company = document.getElementById('filter-company').value;
     const type = document.getElementById('filter-type').value;
     const seg = document.getElementById('filter-segment').value;
-    const now = getDataDate();
-
-    filtered = EVENTS.filter(e => {
-        if (days !== 'all') {
-            const d = new Date(e.published);
-            if ((now - d) / 86400000 > parseInt(days)) return false;
-        }
-        if (company !== 'all' && !e.company.includes(company)) return false;
-        if (type !== 'all' && e.event_type !== type) return false;
-        if (seg !== 'all' && e.segment !== seg) return false;
-        return true;
-    });
+    filtered = Transforms.filterEvents(EVENTS, {
+        days,
+        company,
+        type,
+        segment: seg
+    }, Transforms.getDataDate(EVENTS));
     renderAll();
 }
 
@@ -527,12 +513,7 @@ function renderCharts() {
     });
 
     // Segments
-    const segCounts = {};
-    filtered.forEach(e => {
-        const seg = SEGMENTS.find(s => s.id === e.segment);
-        const label = seg ? seg.label : e.segment;
-        segCounts[label] = (segCounts[label] || 0) + 1;
-    });
+    const segCounts = Transforms.segmentCounts(filtered, SEGMENTS);
     if (charts.rel) charts.rel.destroy();
     charts.rel = new Chart(document.getElementById('chart-relevance'), {
         type: 'bar',
@@ -558,8 +539,7 @@ function renderCharts() {
     });
 
     // Company activity
-    const coCounts = {};
-    filtered.forEach(e => { e.company.split(', ').forEach(c => { coCounts[c] = (coCounts[c] || 0) + 1; }); });
+    const coCounts = Transforms.companyCounts(filtered);
     const sorted = Object.entries(coCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     if (charts.companies) charts.companies.destroy();
     charts.companies = new Chart(document.getElementById('chart-companies'), {
